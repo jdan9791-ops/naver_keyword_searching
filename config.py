@@ -4,6 +4,10 @@ import os
 NAVER_CLIENT_ID = os.environ.get("NAVER_CLIENT_ID", "")
 NAVER_CLIENT_SECRET = os.environ.get("NAVER_CLIENT_SECRET", "")
 
+# ─── KISA Whois API (.kr 도메인 전용) ─────────────────────────────────────────
+# data.go.kr → 한국인터넷진흥원_인터넷주소(도메인이름, 아이피) 정보 검색 서비스
+KISA_API_KEY = os.environ.get("KISA_API_KEY", "")
+
 NAVER_SEARCH_URL = "https://openapi.naver.com/v1/search/webkr.json"
 NAVER_NEWS_URL = "https://openapi.naver.com/v1/search/news.json"
 NAVER_BLOG_URL = "https://openapi.naver.com/v1/search/blog.json"

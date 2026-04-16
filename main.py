@@ -32,6 +32,7 @@ from folder_manager import FolderManager
 from naver_searcher import NaverSearcher, NaverSearchError
 from result_processor import ResultProcessor
 from url_checker import check_urls_batch, filter_accessible_items
+from whois_checker import attach_whois_to_items, check_whois_batch
 
 logging.basicConfig(
     level=logging.INFO,
@@ -80,7 +81,16 @@ def cmd_search(args: argparse.Namespace) -> None:
             if inaccessible:
                 logger.warning("접근 불가 URL %d개 제외됨", inaccessible)
 
-        # 5. 사기 URL 추출
+        # 5. Whois 도메인 등록일 조회
+        if args.whois:
+            logger.info("도메인 등록일 조회 중...")
+            urls = [item.get("link", "") for item in deduped if item.get("link", "").strip()]
+            whois_results = check_whois_batch(urls)
+            deduped = attach_whois_to_items(deduped, results=whois_results)
+            found = sum(1 for r in whois_results.values() if r.reg_date)
+            logger.info("도메인 등록일 조회 완료: %d/%d건", found, len(whois_results))
+
+        # 6. 사기 URL 추출
         scam_urls = processor.get_scam_urls(deduped)
         report = processor.report(deduped)
 
@@ -213,6 +223,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_search.add_argument(
         "--keep-law-firms", action="store_true", help="법률사무소 결과 제거하지 않음"
+    )
+    p_search.add_argument(
+        "--whois", action="store_true", help="도메인 등록일(생성일) Whois 조회"
     )
 
     # dedup
