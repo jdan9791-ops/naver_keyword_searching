@@ -23,9 +23,17 @@
    - '당신의 자산 거래 동반자' ≈ '당신의 자산 거래 파트너' (유사도 75%)
 3. **법률사무소 제거** - 소재만 중요, 사기사이트/거래소 URL 우선 수집
 
+## Google Drive MCP 연동 이슈
+- claude.ai 커넥터 설정: **연결됨** (연결 해제 버튼 확인, 도구 7개 등록)
+- 도구 목록: create_file, download_file_content, get_file_metadata, get_file_permissions, list_recent_files, read_file_content, search_files
+- **문제**: 새 세션에서도 도구가 로드되지 않음 (ToolSearch로 찾아도 미발견)
+- **연결 확인 방법**: 새 대화에서 "Google Drive에서 최근 파일 목록 보여줘" → list_recent_files 실행 여부로 판단
+- **미해결**: 원고.txt 내 Whois 도메인 생성일 정보 오류 수정 필요 (파일은 Google Drive에 있음)
+
 ## 다음 할 일 (2026-04-17 01:00 작업 예정)
-- **Google Drive 연동 확인**: 세션 시작 시 MCP 도구 인식 여부 먼저 확인
-  - 사용 가능 도구: create_file, download_file_content, get_file_metadata, get_file_permissions, list_recent_files, read_file_content, search_files
-- **기존 Google Drive 폴더 삭제 후 4월 15일 기준으로 재생성**
+- **세션 시작 즉시**: "Google Drive에서 최근 파일 목록 보여줘" 로 연동 확인
+- Google Drive 연동 확인되면:
+  - 원고.txt 열어서 Whois 도메인 생성일 오류 수정
+  - 기존 Google Drive 폴더 삭제 후 4월 15일 기준으로 재생성
 - Naver API 환경변수 설정 확인 (NAVER_CLIENT_ID, NAVER_CLIENT_SECRET)
 - 키워드 검색 → 결과를 Google Drive에 저장하는 자동화 파이프라인 실행
