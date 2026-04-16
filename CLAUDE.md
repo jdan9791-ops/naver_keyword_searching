@@ -1,9 +1,10 @@
 # Naver 키워드 검색 도구 - 프로젝트 메모
 
 ## 현재 상태
-- **브랜치**: `claude/apply-additional-fixes-c8DV7`
-- **커밋**: `5ec4806` - 초기 구현 완료, 원격 푸시됨
+- **브랜치**: `claude/continue-after-google-integration-kPnhr`
+- **커밋**: `63f8925` - CLAUDE.md 업데이트됨
 - **저장소**: `jdan9791-ops/naver_keyword_searching`
+- **예약**: 2026-04-17 새벽 01:00 자동화 작업 시작 예정
 
 ## 구현 완료된 파일 (8개, 1,111줄)
 - `config.py` - 설정 (API키, 유사도 임계값 0.75, URL 타임아웃, 제외/우선 키워드)
@@ -22,10 +23,9 @@
    - '당신의 자산 거래 동반자' ≈ '당신의 자산 거래 파트너' (유사도 75%)
 3. **법률사무소 제거** - 소재만 중요, 사기사이트/거래소 URL 우선 수집
 
-## 다음 할 일 (미완료)
-- **Google Drive 연동 필요**: 출력 폴더가 Google Drive
-  - Google Drive MCP 커넥터가 연결되었으나, 이전 세션에서 도구 미인식
-  - 새 대화에서 Google Drive MCP 도구 사용 가능 여부 확인 필요
+## 다음 할 일 (2026-04-17 01:00 작업 예정)
+- **Google Drive 연동 확인**: 세션 시작 시 MCP 도구 인식 여부 먼저 확인
   - 사용 가능 도구: create_file, download_file_content, get_file_metadata, get_file_permissions, list_recent_files, read_file_content, search_files
 - **기존 Google Drive 폴더 삭제 후 4월 15일 기준으로 재생성**
 - Naver API 환경변수 설정 확인 (NAVER_CLIENT_ID, NAVER_CLIENT_SECRET)
+- 키워드 검색 → 결과를 Google Drive에 저장하는 자동화 파이프라인 실행
