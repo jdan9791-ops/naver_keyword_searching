@@ -30,10 +30,17 @@
 - **연결 확인 방법**: 새 대화에서 "Google Drive에서 최근 파일 목록 보여줘" → list_recent_files 실행 여부로 판단
 - **미해결**: 원고.txt 내 Whois 도메인 생성일 정보 오류 수정 필요 (파일은 Google Drive에 있음)
 
+## Whois 도메인 등록일 조회 (구현 완료)
+- `whois_checker.py` 추가됨
+- `.kr`, `.한국` → KISA Open API (data.go.kr, 환경변수 `KISA_API_KEY` 필요)
+- 해외 도메인(.org .com .net 등) → RDAP API (무료, 키 불필요, 자동)
+- 결과 `results.json`에 `domain_created` 필드로 저장
+- 실행 옵션: `python main.py search --keywords "키워드" --whois`
+
 ## 다음 할 일 (2026-04-17 01:00 작업 예정)
 - **세션 시작 즉시**: "Google Drive에서 최근 파일 목록 보여줘" 로 연동 확인
 - Google Drive 연동 확인되면:
   - 원고.txt 열어서 Whois 도메인 생성일 오류 수정
   - 기존 Google Drive 폴더 삭제 후 4월 15일 기준으로 재생성
-- Naver API 환경변수 설정 확인 (NAVER_CLIENT_ID, NAVER_CLIENT_SECRET)
+- 환경변수 설정 필요: `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET`, `KISA_API_KEY`
 - 키워드 검색 → 결과를 Google Drive에 저장하는 자동화 파이프라인 실행
