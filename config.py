@@ -1,4 +1,14 @@
 import os
+from pathlib import Path
+
+# .env 파일 자동 로드 (setup_drive.py가 생성)
+_env_file = Path(__file__).parent / ".env"
+if _env_file.exists():
+    for _line in _env_file.read_text(encoding="utf-8").splitlines():
+        _line = _line.strip()
+        if _line and not _line.startswith("#") and "=" in _line:
+            _k, _v = _line.split("=", 1)
+            os.environ.setdefault(_k.strip(), _v.strip())
 
 # ─── Naver API ────────────────────────────────────────────────────────────────
 NAVER_CLIENT_ID = os.environ.get("NAVER_CLIENT_ID", "")
