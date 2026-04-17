@@ -100,8 +100,10 @@ class GoogleDriveManager:
         self._service = build("drive", "v3", credentials=creds)
         return self._service
 
-    def get_or_create_folder(self, name: str, parent_id: str | None = None) -> str:
-        """Drive에서 폴더를 찾거나 없으면 생성. 폴더 ID 반환."""
+    SOURCE_TEMPLATE_FOLDER = "0 source"
+
+    def get_or_create_folder(self, name: str, parent_id: str | None = None) -> tuple[str, bool]:
+        """Drive에서 폴더를 찾거나 없으면 생성. (폴더 ID, 신규생성 여부) 반환."""
         service = self._get_service()
         parent = parent_id or self.root_folder_id
 
@@ -120,7 +122,7 @@ class GoogleDriveManager:
         )
         files = result.get("files", [])
         if files:
-            return files[0]["id"]
+            return files[0]["id"], False
 
         metadata = {"name": name, "mimeType": _MIME_FOLDER}
         if parent:
@@ -128,10 +130,10 @@ class GoogleDriveManager:
 
         folder = service.files().create(body=metadata, fields="id").execute()
         logger.info("Drive 폴더 생성: %s (id=%s)", name, folder["id"])
-        return folder["id"]
+        return folder["id"], True
 
     def _find_file(self, name: str, parent_id: str) -> str | None:
-        """Drive 폴더 안에서 파일 ID 검색."""
+        """Drive 폴더 안에서 파일/폴더 ID 검색."""
         service = self._get_service()
         query = (
             f"name = '{name}' and '{parent_id}' in parents and trashed = false"
@@ -139,6 +141,49 @@ class GoogleDriveManager:
         result = service.files().list(q=query, fields="files(id)").execute()
         files = result.get("files", [])
         return files[0]["id"] if files else None
+
+    def _list_folder_contents(self, folder_id: str) -> list[dict]:
+        """폴더 안의 모든 파일/폴더 목록 반환."""
+        service = self._get_service()
+        query = f"'{folder_id}' in parents and trashed = false"
+        result = (
+            service.files()
+            .list(q=query, fields="files(id, name, mimeType)")
+            .execute()
+        )
+        return result.get("files", [])
+
+    def _copy_item(self, item: dict, dest_folder_id: str) -> None:
+        """파일 또는 폴더를 dest_folder_id 안에 재귀적으로 복사."""
+        service = self._get_service()
+        if item["mimeType"] == _MIME_FOLDER:
+            # 하위 폴더 생성 후 재귀 복사
+            new_folder = service.files().create(
+                body={"name": item["name"], "mimeType": _MIME_FOLDER, "parents": [dest_folder_id]},
+                fields="id",
+            ).execute()
+            for child in self._list_folder_contents(item["id"]):
+                self._copy_item(child, new_folder["id"])
+        else:
+            service.files().copy(
+                fileId=item["id"],
+                body={"name": item["name"], "parents": [dest_folder_id]},
+            ).execute()
+            logger.info("  복사: %s", item["name"])
+
+    def _copy_source_template(self, dest_folder_id: str) -> None:
+        """루트의 '0 source' 폴더 내용을 dest_folder_id 안에 복사."""
+        source_id = self._find_file(self.SOURCE_TEMPLATE_FOLDER, self.root_folder_id)
+        if not source_id:
+            logger.warning("'%s' 폴더를 찾을 수 없습니다.", self.SOURCE_TEMPLATE_FOLDER)
+            return
+        contents = self._list_folder_contents(source_id)
+        if not contents:
+            logger.info("'%s' 폴더가 비어있습니다.", self.SOURCE_TEMPLATE_FOLDER)
+            return
+        for item in contents:
+            self._copy_item(item, dest_folder_id)
+        logger.info("'%s' 템플릿 복사 완료 (%d개)", self.SOURCE_TEMPLATE_FOLDER, len(contents))
 
     def upload_file(self, local_path: Path, folder_id: str) -> str:
         """로컬 파일을 Drive 폴더에 업로드(이미 있으면 덮어씀). 파일 ID 반환."""
@@ -171,10 +216,12 @@ class GoogleDriveManager:
         """
         로컬 키워드 폴더의 파일들을 Drive에 동기화.
 
-        results.json, scam_urls.txt, report.json 중 존재하는 파일만 업로드.
+        신규 폴더 생성 시 '0 source' 템플릿을 먼저 복사한 뒤 결과 파일 업로드.
         """
         try:
-            drive_folder_id = self.get_or_create_folder(keyword, self.root_folder_id)
+            drive_folder_id, is_new = self.get_or_create_folder(keyword, self.root_folder_id)
+            if is_new and self.root_folder_id:
+                self._copy_source_template(drive_folder_id)
             for filename in ("results.json", "scam_urls.txt", "report.json"):
                 file_path = local_folder / filename
                 if file_path.exists():
