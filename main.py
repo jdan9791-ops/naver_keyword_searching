@@ -59,6 +59,12 @@ def cmd_search(args: argparse.Namespace) -> None:
         logger.info("═" * 50)
         logger.info("검색 키워드: '%s'", keyword)
 
+        # 0. 중복 키워드 체크 (숫자 접미사 / 띄어쓰기 차이)
+        dup = fm.is_duplicate_keyword(keyword)
+        if dup:
+            logger.warning("'%s'은 '%s'의 중복 → 수집 건너뜀", keyword, dup)
+            continue
+
         # 1. 검색
         raw = searcher.search_all(keyword)
         logger.info("원본 결과: %d건", len(raw))

@@ -30,11 +30,19 @@ from deduplicator import KoreanDeduplicator, deduplicate_strings
 logger = logging.getLogger(__name__)
 
 _UNSAFE_CHARS = re.compile(r'[\\/:*?"<>|]')
+_TRAILING_NUMBER = re.compile(r'\s+\d+$')
 
 
 def _safe_dirname(keyword: str) -> str:
     """파일시스템에 안전한 폴더명으로 변환."""
     return _UNSAFE_CHARS.sub("_", keyword).strip()
+
+
+def _normalize_keyword(name: str) -> str:
+    """중복 비교용 정규화: 숫자 접미사 제거 + 공백 제거 + 소문자."""
+    name = _TRAILING_NUMBER.sub("", name).strip()
+    name = re.sub(r'\s+', '', name)
+    return name.lower()
 
 
 class FolderManager:
@@ -62,6 +70,25 @@ class FolderManager:
             root_folder_id=GOOGLE_DRIVE_ROOT_FOLDER_ID or None,
         )
         logger.info("Google Drive 동기화 활성화")
+
+    # ── 중복 키워드 체크 ──────────────────────────────────────────────────────
+
+    def is_duplicate_keyword(self, keyword: str) -> str | None:
+        """
+        이미 저장된 폴더 중 정규화 후 동일한 것이 있으면 그 폴더명 반환, 없으면 None.
+
+        처리 패턴:
+          - 숫자 접미사: '골드리치 2' == '골드리치'
+          - 띄어쓰기:   '구본진 애널리스트' == '구본진애널리스트'
+          - 조합:       '브라더관광 3' == '브라더관광'
+        """
+        norm_new = _normalize_keyword(keyword)
+        for existing in self.list_keywords():
+            if existing == _safe_dirname(keyword):
+                continue  # 자기 자신
+            if _normalize_keyword(existing) == norm_new:
+                return existing
+        return None
 
     # ── 경로 헬퍼 ─────────────────────────────────────────────────────────────
 
