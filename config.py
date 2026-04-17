@@ -24,6 +24,23 @@ MAX_REDIRECTS = 5
 # ─── 출력 경로 ────────────────────────────────────────────────────────────────
 OUTPUT_DIR = os.environ.get("OUTPUT_DIR", "results")
 
+# ─── Google Drive 설정 ────────────────────────────────────────────────────────
+# Google Drive 동기화 활성화 여부 (credentials.json이 있어야 동작)
+GOOGLE_DRIVE_ENABLED = os.environ.get("GOOGLE_DRIVE_ENABLED", "false").lower() == "true"
+
+# 업로드할 Google Drive 루트 폴더 ID
+# Drive 폴더 URL에서 마지막 경로 부분: https://drive.google.com/drive/folders/{FOLDER_ID}
+# 비워두면 내 드라이브 최상위에 저장
+GOOGLE_DRIVE_ROOT_FOLDER_ID = os.environ.get("GOOGLE_DRIVE_ROOT_FOLDER_ID", "")
+
+# OAuth2 credentials.json 경로 (Google Cloud Console에서 다운로드)
+GOOGLE_DRIVE_CREDENTIALS_FILE = os.environ.get(
+    "GOOGLE_DRIVE_CREDENTIALS_FILE", "credentials.json"
+)
+
+# 인증 토큰 저장 경로 (첫 인증 후 자동 생성)
+GOOGLE_DRIVE_TOKEN_FILE = os.environ.get("GOOGLE_DRIVE_TOKEN_FILE", "token.json")
+
 # ─── 필터 설정 ────────────────────────────────────────────────────────────────
 # 이 단어가 제목/설명에 포함되면 결과에서 제외 (법률사무소 정보 제거)
 EXCLUDE_KEYWORDS = [

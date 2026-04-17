@@ -17,7 +17,14 @@ import re
 from pathlib import Path
 from typing import Any
 
-from config import OUTPUT_DIR, SIMILARITY_THRESHOLD
+from config import (
+    GOOGLE_DRIVE_CREDENTIALS_FILE,
+    GOOGLE_DRIVE_ENABLED,
+    GOOGLE_DRIVE_ROOT_FOLDER_ID,
+    GOOGLE_DRIVE_TOKEN_FILE,
+    OUTPUT_DIR,
+    SIMILARITY_THRESHOLD,
+)
 from deduplicator import KoreanDeduplicator, deduplicate_strings
 
 logger = logging.getLogger(__name__)
@@ -43,6 +50,18 @@ class FolderManager:
     def __init__(self, base_dir: str | Path = OUTPUT_DIR) -> None:
         self.base_dir = Path(base_dir)
         self.base_dir.mkdir(parents=True, exist_ok=True)
+        self._drive: Any = None
+        if GOOGLE_DRIVE_ENABLED:
+            self._init_drive()
+
+    def _init_drive(self) -> None:
+        from google_drive_manager import GoogleDriveManager
+        self._drive = GoogleDriveManager(
+            credentials_file=GOOGLE_DRIVE_CREDENTIALS_FILE,
+            token_file=GOOGLE_DRIVE_TOKEN_FILE,
+            root_folder_id=GOOGLE_DRIVE_ROOT_FOLDER_ID or None,
+        )
+        logger.info("Google Drive 동기화 활성화")
 
     # ── 경로 헬퍼 ─────────────────────────────────────────────────────────────
 
@@ -88,6 +107,9 @@ class FolderManager:
             report_path = folder / "report.json"
             with report_path.open("w", encoding="utf-8") as f:
                 json.dump(report, f, ensure_ascii=False, indent=2)
+
+        if self._drive is not None:
+            self._drive.sync_keyword_folder(keyword, folder)
 
         return folder
 
