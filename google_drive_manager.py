@@ -16,12 +16,15 @@ Google Drive 연동 모듈.
 from __future__ import annotations
 
 import logging
-import os
+import re
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 SCOPES = ["https://www.googleapis.com/auth/drive"]
+
+# "골드리치 2", "골드리치 3" → "골드리치" 로 정규화
+_TRAILING_NUMBER = re.compile(r'\s+\d+$')
 
 _MIME_FOLDER = "application/vnd.google-apps.folder"
 _MIME_JSON = "application/json"
@@ -212,13 +215,37 @@ class GoogleDriveManager:
 
         return file["id"]
 
+    def _find_duplicate_folder(self, keyword: str) -> str | None:
+        """
+        숫자 접미사를 제거한 기본 이름으로 이미 존재하는 폴더를 검색.
+
+        예) "골드리치 2" 입력 시 "골드리치" 폴더가 있으면 그 ID 반환.
+        기본 이름과 동일하거나 기본 이름으로 시작하는 폴더가 있으면 중복으로 간주.
+        """
+        base = _TRAILING_NUMBER.sub("", keyword).strip()
+        if base == keyword:
+            return None  # 숫자 접미사 없음 → 중복 검사 불필요
+
+        existing_id = self._find_file(base, self.root_folder_id)
+        if existing_id:
+            logger.info("중복 폴더 감지: '%s' → 기존 '%s' 사용", keyword, base)
+        return existing_id
+
     def sync_keyword_folder(self, keyword: str, local_folder: Path) -> None:
         """
         로컬 키워드 폴더의 파일들을 Drive에 동기화.
 
-        신규 폴더 생성 시 '0 source' 템플릿을 먼저 복사한 뒤 결과 파일 업로드.
+        - 숫자 접미사 중복('골드리치 2', '골드리치 3')이면 기존 폴더에 업로드.
+        - 신규 폴더 생성 시 '0 source' 템플릿을 먼저 복사한 뒤 결과 파일 업로드.
         """
         try:
+            # 숫자 접미사 중복 체크
+            dup_id = self._find_duplicate_folder(keyword)
+            if dup_id:
+                base = _TRAILING_NUMBER.sub("", keyword).strip()
+                logger.info("'%s'은 '%s'의 중복 → 새 폴더 생성 생략", keyword, base)
+                return
+
             drive_folder_id, is_new = self.get_or_create_folder(keyword, self.root_folder_id)
             if is_new and self.root_folder_id:
                 self._copy_source_template(drive_folder_id)
