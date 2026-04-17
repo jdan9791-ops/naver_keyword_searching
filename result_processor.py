@@ -45,10 +45,11 @@ def _contains_any(text: str, keywords: list[str]) -> bool:
 
 
 def is_law_firm_result(item: dict[str, Any]) -> bool:
-    """법률사무소 관련 항목이면 True."""
+    """법률사무소 관련 항목이면 True. 제목/설명/블로거명 모두 체크."""
     combined = " ".join([
         item.get("title", ""),
         item.get("description", ""),
+        item.get("bloggername", ""),  # 블로그 작성자 이름 (법무법인OO 등)
     ])
     return _contains_any(combined, EXCLUDE_KEYWORDS)
 
