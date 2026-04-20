@@ -27,11 +27,29 @@ SCOPES = ["https://www.googleapis.com/auth/drive"]
 _TRAILING_NUMBER = re.compile(r'\s+\d+$')
 
 
+_DATE_PREFIX = re.compile(r'^\d{6}\s*')  # "260418 " 같은 날짜 접두사
+
+
 def _normalize(name: str) -> str:
-    """중복 비교용 정규화: 공백 제거 + 숫자 접미사 제거 + 소문자."""
+    """중복 비교용 정규화: 날짜 접두사 제거 + 숫자 접미사 제거 + 공백 제거 + 소문자."""
+    name = _DATE_PREFIX.sub("", name)
     name = _TRAILING_NUMBER.sub("", name).strip()
     name = re.sub(r'\s+', '', name)
     return name.lower()
+
+
+def _is_duplicate_name(a: str, b: str) -> bool:
+    """
+    정규화 후 중복 여부 판단.
+    - 완전 일치: '골드문퀵머니' == '골드문퀵머니'
+    - 접두사 포함: '골드문퀵머니' ⊂ '골드문퀵머니goldmoon해외송금'
+    """
+    na, nb = _normalize(a), _normalize(b)
+    if na == nb:
+        return True
+    shorter, longer = (na, nb) if len(na) <= len(nb) else (nb, na)
+    # 짧은 쪽이 4글자 이상이고 긴 쪽의 앞부분에 포함되면 중복
+    return len(shorter) >= 4 and longer.startswith(shorter)
 
 _MIME_FOLDER = "application/vnd.google-apps.folder"
 _MIME_JSON = "application/json"
@@ -238,18 +256,17 @@ class GoogleDriveManager:
 
     def _find_duplicate_folder(self, keyword: str) -> tuple[str, str] | None:
         """
-        정규화(공백 제거 + 숫자 접미사 제거) 후 동일한 폴더가 있으면 (id, name) 반환.
+        정규화 후 중복 폴더가 있으면 (id, name) 반환.
 
         처리 패턴:
           - 숫자 접미사: '골드리치 2' == '골드리치'
           - 띄어쓰기:   '구본진 애널리스트' == '구본진애널리스트'
-          - 조합:       '브라더관광 3' == '브라더관광'
+          - 접두사 포함: '골드문퀵머니' ⊂ '골드문 퀵머니 GoldMoon 해외송금'
         """
-        norm_new = _normalize(keyword)
         for folder in self._list_root_folders():
             if folder["name"] == keyword:
-                continue  # 자기 자신은 제외
-            if _normalize(folder["name"]) == norm_new:
+                continue
+            if _is_duplicate_name(keyword, folder["name"]):
                 logger.info("중복 폴더 감지: '%s' ≈ '%s'", keyword, folder["name"])
                 return folder["id"], folder["name"]
         return None

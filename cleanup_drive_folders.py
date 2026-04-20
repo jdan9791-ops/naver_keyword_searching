@@ -18,7 +18,7 @@ import re
 import sys
 from collections import defaultdict
 
-from google_drive_manager import GoogleDriveManager, _normalize, _TRAILING_NUMBER
+from google_drive_manager import GoogleDriveManager, _normalize, _is_duplicate_name
 from config import (
     GOOGLE_DRIVE_CREDENTIALS_FILE,
     GOOGLE_DRIVE_ROOT_FOLDER_ID,
@@ -38,25 +38,28 @@ def _normalize_folder(name: str) -> str:
     return _normalize(name)
 
 
-def find_duplicates(folders: list[dict]) -> dict[str, list[dict]]:
+def find_duplicates(folders: list[dict]) -> list[list[dict]]:
     """
-    정규화 키 기준으로 그룹핑. 2개 이상인 그룹 = 중복.
-    그룹 내에서 숫자 접미사 없는 것(원본)을 첫 번째로 정렬.
+    _is_duplicate_name 기준으로 중복 그룹 탐지.
+    그룹 내에서 이름이 짧은 것(원본)을 첫 번째로 정렬.
     """
-    groups: dict[str, list[dict]] = defaultdict(list)
-    for f in folders:
-        key = _normalize_folder(f["name"])
-        groups[key].append(f)
+    visited = set()
+    groups = []
 
-    duplicates = {}
-    for key, items in groups.items():
-        if len(items) < 2:
+    for i, f in enumerate(folders):
+        if f["id"] in visited:
             continue
-        # 숫자 접미사 없는 것을 앞으로 (원본 우선)
-        items.sort(key=lambda x: (bool(_TRAILING_NUMBER.search(x["name"])), x["name"]))
-        duplicates[key] = items
+        group = [f]
+        visited.add(f["id"])
+        for g in folders[i + 1:]:
+            if g["id"] not in visited and _is_duplicate_name(f["name"], g["name"]):
+                group.append(g)
+                visited.add(g["id"])
+        if len(group) >= 2:
+            group.sort(key=lambda x: len(x["name"]))  # 짧은 이름(원본) 우선
+            groups.append(group)
 
-    return duplicates
+    return groups
 
 
 def main() -> None:
@@ -91,7 +94,7 @@ def main() -> None:
     print(f"\n중복 그룹 {len(duplicates)}개 발견:\n")
     to_delete: list[dict] = []
 
-    for items in duplicates.values():
+    for items in duplicates:
         original = items[0]
         dups = items[1:]
         print(f"  ✅ 유지: {original['name']}")

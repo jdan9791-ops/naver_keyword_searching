@@ -31,6 +31,7 @@ logger = logging.getLogger(__name__)
 
 _UNSAFE_CHARS = re.compile(r'[\\/:*?"<>|]')
 _TRAILING_NUMBER = re.compile(r'\s+\d+$')
+_DATE_PREFIX = re.compile(r'^\d{6}\s*')
 
 
 def _safe_dirname(keyword: str) -> str:
@@ -39,10 +40,19 @@ def _safe_dirname(keyword: str) -> str:
 
 
 def _normalize_keyword(name: str) -> str:
-    """중복 비교용 정규화: 숫자 접미사 제거 + 공백 제거 + 소문자."""
+    """중복 비교용 정규화: 날짜 접두사 제거 + 숫자 접미사 제거 + 공백 제거 + 소문자."""
+    name = _DATE_PREFIX.sub("", name)
     name = _TRAILING_NUMBER.sub("", name).strip()
     name = re.sub(r'\s+', '', name)
     return name.lower()
+
+
+def _is_duplicate_keyword(a: str, b: str) -> bool:
+    na, nb = _normalize_keyword(a), _normalize_keyword(b)
+    if na == nb:
+        return True
+    shorter, longer = (na, nb) if len(na) <= len(nb) else (nb, na)
+    return len(shorter) >= 4 and longer.startswith(shorter)
 
 
 class FolderManager:
@@ -82,11 +92,10 @@ class FolderManager:
           - 띄어쓰기:   '구본진 애널리스트' == '구본진애널리스트'
           - 조합:       '브라더관광 3' == '브라더관광'
         """
-        norm_new = _normalize_keyword(keyword)
         for existing in self.list_keywords():
             if existing == _safe_dirname(keyword):
-                continue  # 자기 자신
-            if _normalize_keyword(existing) == norm_new:
+                continue
+            if _is_duplicate_keyword(keyword, existing):
                 return existing
         return None
 
