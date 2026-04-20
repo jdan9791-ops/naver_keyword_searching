@@ -34,6 +34,9 @@ MAX_REDIRECTS = 5
 # ─── 출력 경로 ────────────────────────────────────────────────────────────────
 OUTPUT_DIR = os.environ.get("OUTPUT_DIR", "results")
 
+# 키워드 이력 파일 (results 폴더와 별도로 누적 관리)
+KEYWORD_HISTORY_FILE = os.environ.get("KEYWORD_HISTORY_FILE", "keyword_history.json")
+
 # ─── Google Drive 설정 ────────────────────────────────────────────────────────
 # Google Drive 동기화 활성화 여부 (credentials.json이 있어야 동작)
 GOOGLE_DRIVE_ENABLED = os.environ.get("GOOGLE_DRIVE_ENABLED", "false").lower() == "true"

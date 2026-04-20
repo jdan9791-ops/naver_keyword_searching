@@ -17,11 +17,14 @@ import re
 from pathlib import Path
 from typing import Any
 
+import datetime
+
 from config import (
     GOOGLE_DRIVE_CREDENTIALS_FILE,
     GOOGLE_DRIVE_ENABLED,
     GOOGLE_DRIVE_ROOT_FOLDER_ID,
     GOOGLE_DRIVE_TOKEN_FILE,
+    KEYWORD_HISTORY_FILE,
     OUTPUT_DIR,
     SIMILARITY_THRESHOLD,
 )
@@ -68,9 +71,34 @@ class FolderManager:
     def __init__(self, base_dir: str | Path = OUTPUT_DIR) -> None:
         self.base_dir = Path(base_dir)
         self.base_dir.mkdir(parents=True, exist_ok=True)
+        self._history_file = Path(KEYWORD_HISTORY_FILE)
         self._drive: Any = None
         if GOOGLE_DRIVE_ENABLED:
             self._init_drive()
+
+    # ── 키워드 이력 관리 ──────────────────────────────────────────────────────
+
+    def _load_history(self) -> list[dict]:
+        if not self._history_file.exists():
+            return []
+        with self._history_file.open(encoding="utf-8") as f:
+            return json.load(f)
+
+    def _save_history(self, history: list[dict]) -> None:
+        with self._history_file.open("w", encoding="utf-8") as f:
+            json.dump(history, f, ensure_ascii=False, indent=2)
+
+    def _add_to_history(self, keyword: str) -> None:
+        history = self._load_history()
+        norm = _normalize_keyword(keyword)
+        if not any(e["normalized"] == norm for e in history):
+            history.append({
+                "keyword": keyword,
+                "normalized": norm,
+                "date": datetime.date.today().isoformat(),
+            })
+            self._save_history(history)
+            logger.info("이력 추가: '%s'", keyword)
 
     def _init_drive(self) -> None:
         from google_drive_manager import GoogleDriveManager
@@ -85,18 +113,24 @@ class FolderManager:
 
     def is_duplicate_keyword(self, keyword: str) -> str | None:
         """
-        이미 저장된 폴더 중 정규화 후 동일한 것이 있으면 그 폴더명 반환, 없으면 None.
-
-        처리 패턴:
-          - 숫자 접미사: '골드리치 2' == '골드리치'
-          - 띄어쓰기:   '구본진 애널리스트' == '구본진애널리스트'
-          - 조합:       '브라더관광 3' == '브라더관광'
+        이력 파일 + 로컬 폴더 기준으로 중복 여부 확인.
+        중복이면 기존 키워드명 반환, 없으면 None.
         """
+        # 1. 누적 이력 파일 확인 (results 폴더 삭제돼도 유지)
+        for entry in self._load_history():
+            if entry["normalized"] == _normalize_keyword(keyword):
+                if entry["keyword"] != keyword:
+                    return entry["keyword"]
+            elif _is_duplicate_keyword(keyword, entry["keyword"]):
+                return entry["keyword"]
+
+        # 2. 로컬 폴더 확인 (이력에 없는 경우 보완)
         for existing in self.list_keywords():
             if existing == _safe_dirname(keyword):
                 continue
             if _is_duplicate_keyword(keyword, existing):
                 return existing
+
         return None
 
     # ── 경로 헬퍼 ─────────────────────────────────────────────────────────────
@@ -143,6 +177,9 @@ class FolderManager:
             report_path = folder / "report.json"
             with report_path.open("w", encoding="utf-8") as f:
                 json.dump(report, f, ensure_ascii=False, indent=2)
+
+        # 키워드 이력 누적 저장
+        self._add_to_history(keyword)
 
         if self._drive is not None:
             self._drive.sync_keyword_folder(keyword, folder)
