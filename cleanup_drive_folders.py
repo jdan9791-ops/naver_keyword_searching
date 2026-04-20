@@ -75,14 +75,44 @@ def main() -> None:
     )
 
     print("Drive 폴더 목록 가져오는 중...")
-    all_folders = dm._list_root_folders()
+    service = dm._get_service()
 
-    # 날짜 필터
+    def list_folders(parent_id: str) -> list[dict]:
+        q = f"'{parent_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+        res = service.files().list(q=q, fields="files(id, name)", pageSize=1000).execute()
+        return res.get("files", [])
+
+    root_folders = list_folders(GOOGLE_DRIVE_ROOT_FOLDER_ID)
+
     if args.date:
-        folders = [f for f in all_folders if f["name"].startswith(args.date)]
-        print(f"'{args.date}' 접두사 폴더: {len(folders)}개")
+        # 1) root에서 직접 날짜 접두사 폴더 탐색
+        folders = [f for f in root_folders if f["name"].startswith(args.date)]
+
+        # 2) 없으면 "20YYMMDD" 형태 날짜 하위 폴더 안을 탐색
+        if not folders:
+            date_folder = next(
+                (f for f in root_folders if args.date in f["name"] and f["name"].isdigit()),
+                None,
+            )
+            if date_folder:
+                folders = [f for f in list_folders(date_folder["id"]) if f["name"].startswith(args.date)]
+                print(f"날짜 폴더 '{date_folder['name']}' 내 회사 폴더: {len(folders)}개")
+            else:
+                # 3) 모든 날짜 하위 폴더를 뒤져서 해당 날짜 접두사 폴더 수집
+                folders = []
+                for date_dir in root_folders:
+                    if date_dir["name"].isdigit():
+                        sub = [f for f in list_folders(date_dir["id"]) if f["name"].startswith(args.date)]
+                        folders.extend(sub)
+                print(f"'{args.date}' 접두사 폴더: {len(folders)}개 (하위 폴더 검색)")
+        else:
+            print(f"'{args.date}' 접두사 폴더: {len(folders)}개")
     else:
-        folders = all_folders
+        # 전체: root + 모든 날짜 하위 폴더
+        folders = list(root_folders)
+        for date_dir in root_folders:
+            if date_dir["name"].isdigit():
+                folders.extend(list_folders(date_dir["id"]))
         print(f"전체 폴더: {len(folders)}개")
 
     duplicates = find_duplicates(folders)
