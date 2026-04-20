@@ -95,8 +95,12 @@ def main() -> None:
                 None,
             )
             if date_folder:
-                folders = [f for f in list_folders(date_folder["id"]) if f["name"].startswith(args.date)]
-                print(f"날짜 폴더 '{date_folder['name']}' 내 회사 폴더: {len(folders)}개")
+                all_in_date = list_folders(date_folder["id"])
+                print(f"날짜 폴더 '{date_folder['name']}' 내 전체 폴더 목록:")
+                for f in all_in_date:
+                    print(f"  - {f['name']}")
+                folders = [f for f in all_in_date if f["name"].startswith(args.date)]
+                print(f"→ '{args.date}' 접두사 폴더: {len(folders)}개")
             else:
                 # 3) 모든 날짜 하위 폴더를 뒤져서 해당 날짜 접두사 폴더 수집
                 folders = []
