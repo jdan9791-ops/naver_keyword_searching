@@ -1,71 +1,90 @@
 """
 Google Drive 폴더 중복 정리 스크립트.
 
-중복 기준:
-  - 숫자 접미사: '260417 골드리치 2' == '260417 골드리치'
-  - 띄어쓰기:   '260417 구본진 애널리스트' == '260417 구본진애널리스트'
-  - 조합:       위 두 가지 동시 적용
+날짜를 가로질러 동일 회사 폴더 중복 감지.
+예) 20260419/260419 골드문퀵머니
+    20260420/260420 골드문 퀵머니 GoldMoon 해외송금  ← 중복 → 삭제
 
 사용법:
-  python cleanup_drive_folders.py --date 260417          # 해당 날짜 폴더 미리보기
-  python cleanup_drive_folders.py --date 260417 --delete # 실제 삭제
-  python cleanup_drive_folders.py --delete               # 전체 날짜 정리
+  python cleanup_drive_folders.py               # 전체 날짜 중복 미리보기
+  python cleanup_drive_folders.py --delete      # 전체 날짜 중복 삭제 (오래된 것 유지)
+  python cleanup_drive_folders.py --target 260420          # 20일 폴더 기준 미리보기
+  python cleanup_drive_folders.py --target 260420 --delete # 20일 중복만 삭제
 """
 from __future__ import annotations
 
 import argparse
-import re
 import sys
-from collections import defaultdict
 
-from google_drive_manager import GoogleDriveManager, _normalize, _is_duplicate_name
+from google_drive_manager import GoogleDriveManager, _is_duplicate_name
 from config import (
     GOOGLE_DRIVE_CREDENTIALS_FILE,
     GOOGLE_DRIVE_ROOT_FOLDER_ID,
     GOOGLE_DRIVE_TOKEN_FILE,
 )
 
-_UNSAFE = re.compile(r'[\\/:*?"<>|]')
 
-
-def _normalize_folder(name: str) -> str:
-    """날짜 접두사 유지하면서 뒷부분만 정규화."""
-    # "260417 골드리치 2" → prefix="260417", body="골드리치 2"
-    parts = name.split(" ", 1)
-    if len(parts) == 2 and parts[0].isdigit():
-        prefix, body = parts
-        return prefix + "_" + _normalize(body)
-    return _normalize(name)
-
-
-def find_duplicates(folders: list[dict]) -> list[list[dict]]:
+def collect_all_company_folders(service, root_id: str) -> list[dict]:
     """
-    _is_duplicate_name 기준으로 중복 그룹 탐지.
-    그룹 내에서 이름이 짧은 것(원본)을 첫 번째로 정렬.
+    모든 날짜 하위 폴더 안의 회사 폴더를 수집.
+    각 항목: {id, name, date_folder}
+    """
+    def list_folders(parent_id: str) -> list[dict]:
+        q = (f"'{parent_id}' in parents and "
+             f"mimeType = 'application/vnd.google-apps.folder' and trashed = false")
+        res = service.files().list(q=q, fields="files(id, name)", pageSize=1000).execute()
+        return res.get("files", [])
+
+    root_folders = list_folders(root_id)
+    company_folders = []
+
+    for folder in sorted(root_folders, key=lambda x: x["name"]):
+        name = folder["name"]
+        # 숫자로만 된 폴더 = 날짜 폴더 (예: 20260419)
+        if name.isdigit():
+            for company in list_folders(folder["id"]):
+                company_folders.append({**company, "date_folder": name})
+        elif name != "0 source":
+            # 날짜 폴더 없이 root에 바로 있는 회사 폴더
+            company_folders.append({**folder, "date_folder": ""})
+
+    return company_folders
+
+
+def find_cross_date_duplicates(
+    all_folders: list[dict],
+    target_date: str | None = None,
+) -> list[list[dict]]:
+    """
+    날짜를 가로질러 중복 그룹 탐지.
+    그룹 내 정렬: 날짜 폴더 이름 오름차순 (오래된 것 앞).
+    target_date: 이 날짜 폴더의 항목이 포함된 그룹만 반환.
     """
     visited = set()
     groups = []
 
-    for i, f in enumerate(folders):
-        if f["id"] in visited:
+    for i, a in enumerate(all_folders):
+        if a["id"] in visited:
             continue
-        group = [f]
-        visited.add(f["id"])
-        for g in folders[i + 1:]:
-            if g["id"] not in visited and _is_duplicate_name(f["name"], g["name"]):
-                group.append(g)
-                visited.add(g["id"])
+        group = [a]
+        visited.add(a["id"])
+        for b in all_folders[i + 1:]:
+            if b["id"] not in visited and _is_duplicate_name(a["name"], b["name"]):
+                group.append(b)
+                visited.add(b["id"])
         if len(group) >= 2:
-            group.sort(key=lambda x: len(x["name"]))  # 짧은 이름(원본) 우선
-            groups.append(group)
+            # 오래된 날짜 폴더 순으로 정렬 → 첫 번째가 원본
+            group.sort(key=lambda x: (x["date_folder"], x["name"]))
+            if target_date is None or any(target_date in f["date_folder"] for f in group):
+                groups.append(group)
 
     return groups
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Google Drive 중복 폴더 정리")
-    parser.add_argument("--date", help="정리할 날짜 접두사 (예: 260417). 생략시 전체")
-    parser.add_argument("--delete", action="store_true", help="실제 삭제 수행 (없으면 미리보기만)")
+    parser = argparse.ArgumentParser(description="Google Drive 날짜 간 중복 폴더 정리")
+    parser.add_argument("--target", help="삭제 대상 날짜 (예: 260420). 생략시 전체")
+    parser.add_argument("--delete", action="store_true", help="실제 삭제 수행")
     args = parser.parse_args()
 
     dm = GoogleDriveManager(
@@ -76,66 +95,32 @@ def main() -> None:
 
     print("Drive 폴더 목록 가져오는 중...")
     service = dm._get_service()
+    all_folders = collect_all_company_folders(service, GOOGLE_DRIVE_ROOT_FOLDER_ID)
+    print(f"전체 회사 폴더: {len(all_folders)}개\n")
 
-    def list_folders(parent_id: str) -> list[dict]:
-        q = f"'{parent_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
-        res = service.files().list(q=q, fields="files(id, name)", pageSize=1000).execute()
-        return res.get("files", [])
-
-    root_folders = list_folders(GOOGLE_DRIVE_ROOT_FOLDER_ID)
-
-    if args.date:
-        # 1) root에서 직접 날짜 접두사 폴더 탐색
-        folders = [f for f in root_folders if f["name"].startswith(args.date)]
-
-        # 2) 없으면 "20YYMMDD" 형태 날짜 하위 폴더 안을 탐색
-        if not folders:
-            date_folder = next(
-                (f for f in root_folders if args.date in f["name"] and f["name"].isdigit()),
-                None,
-            )
-            if date_folder:
-                all_in_date = list_folders(date_folder["id"])
-                print(f"날짜 폴더 '{date_folder['name']}' 내 전체 폴더 목록:")
-                for f in all_in_date:
-                    print(f"  - {f['name']}")
-                folders = [f for f in all_in_date if f["name"].startswith(args.date)]
-                print(f"→ '{args.date}' 접두사 폴더: {len(folders)}개")
-            else:
-                # 3) 모든 날짜 하위 폴더를 뒤져서 해당 날짜 접두사 폴더 수집
-                folders = []
-                for date_dir in root_folders:
-                    if date_dir["name"].isdigit():
-                        sub = [f for f in list_folders(date_dir["id"]) if f["name"].startswith(args.date)]
-                        folders.extend(sub)
-                print(f"'{args.date}' 접두사 폴더: {len(folders)}개 (하위 폴더 검색)")
-        else:
-            print(f"'{args.date}' 접두사 폴더: {len(folders)}개")
-    else:
-        # 전체: root + 모든 날짜 하위 폴더
-        folders = list(root_folders)
-        for date_dir in root_folders:
-            if date_dir["name"].isdigit():
-                folders.extend(list_folders(date_dir["id"]))
-        print(f"전체 폴더: {len(folders)}개")
-
-    duplicates = find_duplicates(folders)
+    duplicates = find_cross_date_duplicates(all_folders, target_date=args.target)
 
     if not duplicates:
-        print("중복 폴더 없음. 정리 완료.")
+        print("중복 폴더 없음.")
         return
 
-    print(f"\n중복 그룹 {len(duplicates)}개 발견:\n")
+    print(f"중복 그룹 {len(duplicates)}개 발견:\n")
     to_delete: list[dict] = []
 
-    for items in duplicates:
-        original = items[0]
-        dups = items[1:]
-        print(f"  ✅ 유지: {original['name']}")
+    for group in duplicates:
+        original = group[0]
+        dups = [f for f in group[1:] if args.target is None or args.target in f["date_folder"]]
+        if not dups:
+            continue
+        print(f"  ✅ 유지: [{original['date_folder']}] {original['name']}")
         for d in dups:
-            print(f"  🗑  삭제: {d['name']}")
+            print(f"  🗑  삭제: [{d['date_folder']}] {d['name']}")
             to_delete.append(d)
         print()
+
+    if not to_delete:
+        print("삭제 대상 없음.")
+        return
 
     print(f"총 {len(to_delete)}개 폴더 삭제 예정")
 
@@ -148,10 +133,9 @@ def main() -> None:
         print("취소됨.")
         return
 
-    service = dm._get_service()
     for folder in to_delete:
         service.files().delete(fileId=folder["id"]).execute()
-        print(f"삭제 완료: {folder['name']}")
+        print(f"삭제 완료: [{folder['date_folder']}] {folder['name']}")
 
     print(f"\n정리 완료: {len(to_delete)}개 폴더 삭제됨.")
 
